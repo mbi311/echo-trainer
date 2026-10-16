@@ -1,0 +1,554 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>迴音練習台</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png">
+<meta name="theme-color" content="#2f6b5a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="迴音練習">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;600;700&family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* 版面：左側播放器與當前句子（工作區），右側今日片段與句子清單（索引）；窄螢幕上下堆疊 */
+:root {
+  --bg: #f3f4f1;
+  --panel: #ffffff;
+  --line: #dcdfd8;
+  --fg: #1d2420;
+  --muted: #66706a;
+  --accent: #2f6b5a;
+  --accent-soft: #e2ede8;
+  --good: #2e7d46;
+  --bad: #b8433a;
+  --c-fin: #9a6a12;
+  --c-tech: #2c5f9e;
+  --c-psy: #8a4b8f;
+  --c-pol: #a3432f;
+  --display: "Familjen Grotesk", "Noto Sans TC", system-ui, sans-serif;
+  --body: "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
+  --mono: "JetBrains Mono", Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #141815; --panel: #1c211e; --line: #2e3530; --fg: #e6ebe7; --muted: #93a098;
+    --accent: #6fbfa5; --accent-soft: #23332d; --good: #6cc489; --bad: #ec7a70;
+    --c-fin: #e0b25a; --c-tech: #7fb0ec; --c-psy: #d39bd8; --c-pol: #ec8f79;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 15px; line-height: 1.6; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.wrap { max-width: 1240px; margin: 0 auto; padding: 20px 20px 48px; }
+header.top { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
+h1 { font-family: var(--display); font-weight: 700; font-size: 26px; margin: 0; letter-spacing: -0.01em; }
+h1 small { font-family: var(--body); font-weight: 400; font-size: 14px; color: var(--muted); margin-left: 10px; letter-spacing: 0; }
+.stats { display: flex; gap: 18px; font-size: 13px; color: var(--muted); }
+.stats b { font-family: var(--mono); color: var(--fg); font-size: 15px; font-weight: 600; margin-right: 3px; }
+
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 20px; align-items: start; }
+@media (max-width: 920px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+.player-box { overflow: hidden; }
+.video { position: relative; aspect-ratio: 16 / 9; background: #000; max-width: 100%; }
+.video > div, .video iframe { position: absolute; inset: 0; width: 100%; height: 100%; }
+.clip-meta { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); min-width: 0; }
+.clip-meta .title { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
+.clip-meta .ch { color: var(--muted); font-size: 13px; white-space: nowrap; }
+
+.chip { display: inline-block; font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: 4px; letter-spacing: 0.04em; border: 1px solid currentColor; white-space: nowrap; }
+.cat-財經 { color: var(--c-fin); } .cat-科技 { color: var(--c-tech); } .cat-心理 { color: var(--c-psy); } .cat-政治 { color: var(--c-pol); }
+
+/* 工作區：當前句子 */
+.stage { padding: 20px 20px 18px; display: grid; gap: 14px; }
+.stage-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.counter { font-family: var(--mono); font-size: 13px; color: var(--muted); }
+.modes { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; padding: 3px; gap: 3px; }
+.modes button { border: 0; background: transparent; padding: 5px 14px; border-radius: 6px; font-size: 14px; color: var(--muted); }
+.modes button[aria-pressed="true"] { background: var(--accent); color: var(--panel); font-weight: 500; }
+
+.phase { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--muted); min-height: 24px; }
+.phase .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--line); flex: none; }
+.phase[data-p="play"] .dot { background: var(--accent); animation: pulse 1s infinite; }
+.phase[data-p="echo"] .dot { background: var(--c-fin); }
+.phase[data-p="speak"] .dot { background: var(--c-psy); }
+.phase[data-p="play"], .phase[data-p="echo"], .phase[data-p="speak"] { color: var(--fg); font-weight: 500; }
+@keyframes pulse { 50% { opacity: 0.3; } }
+.bar { height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; }
+.bar i { display: block; height: 100%; width: 0; background: var(--accent); }
+
+.sentence { font-size: 22px; line-height: 1.5; font-weight: 500; min-height: 66px; padding: 4px 0; transition: filter .2s; overflow-wrap: anywhere; }
+.sentence.hidden { filter: blur(7px); user-select: none; }
+.sentence .w-ok { color: var(--good); }
+.sentence .w-miss { color: var(--bad); text-decoration: underline wavy; text-underline-offset: 5px; }
+.extra { font-size: 14px; color: var(--muted); }
+.extra s { color: var(--bad); }
+
+.dict { display: grid; gap: 8px; }
+.dict input { width: 100%; padding: 11px 13px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); font-size: 17px; }
+.dict input:focus { border-color: var(--accent); outline: none; }
+.score { font-family: var(--mono); font-size: 13px; color: var(--muted); }
+
+.controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.btn { border: 1px solid var(--line); background: var(--panel); padding: 7px 14px; border-radius: 8px; font-size: 14px; display: inline-flex; gap: 6px; align-items: center; }
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--panel); font-weight: 500; }
+.btn kbd { font-family: var(--mono); font-size: 11px; padding: 0 5px; border: 1px solid currentColor; border-radius: 3px; opacity: .6; }
+.spacer { flex: 1; }
+
+.settings { display: flex; flex-wrap: wrap; gap: 16px; padding: 12px 20px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+.settings label { display: inline-flex; align-items: center; gap: 6px; }
+.settings select { border: 1px solid var(--line); background: var(--bg); border-radius: 6px; padding: 2px 6px; font-size: 13px; }
+
+/* 索引欄 */
+aside { display: grid; gap: 16px; }
+.section-title { font-family: var(--display); font-weight: 600; font-size: 15px; margin: 0; padding: 12px 16px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; }
+.section-title span { font-family: var(--body); font-weight: 400; font-size: 12px; color: var(--muted); }
+.today { list-style: none; margin: 0; padding: 6px; display: grid; gap: 2px; }
+.today li button { width: 100%; text-align: left; border: 0; background: transparent; padding: 9px 10px; border-radius: 7px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; }
+.today li button:hover { background: var(--accent-soft); }
+.today li button[aria-current="true"] { background: var(--accent-soft); }
+.today .t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px; }
+.today .done { font-size: 12px; color: var(--good); font-weight: 700; }
+.today .todo { font-size: 12px; color: var(--muted); }
+.swap { border: 0; background: transparent; color: var(--accent); font-size: 13px; padding: 0 16px 12px; text-align: left; }
+
+.lines { list-style: none; margin: 0; padding: 6px; max-height: 420px; overflow-y: auto; position: relative; }
+.lines li button { width: 100%; text-align: left; border: 0; background: transparent; padding: 7px 10px; border-radius: 6px; display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 8px; font-size: 13.5px; line-height: 1.45; color: var(--muted); }
+.lines li button:hover { background: var(--accent-soft); }
+.lines li button[aria-current="true"] { background: var(--accent-soft); color: var(--fg); }
+.lines .n { font-family: var(--mono); font-size: 11px; padding-top: 2px; }
+.lines.masked li:not(.seen) .tx { filter: blur(4px); }
+
+.empty { padding: 40px 24px; text-align: center; color: var(--muted); }
+.empty h2 { font-family: var(--display); color: var(--fg); font-size: 20px; margin: 0 0 8px; }
+.empty code { font-family: var(--mono); background: var(--accent-soft); padding: 1px 6px; border-radius: 4px; color: var(--fg); }
+
+.finish { padding: 14px 16px; background: var(--accent-soft); border-radius: 8px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.finish p { margin: 0; flex: 1; min-width: 200px; }
+
+.help { font-size: 12.5px; color: var(--muted); padding: 12px 16px; line-height: 1.7; }
+.help kbd { font-family: var(--mono); font-size: 11px; padding: 0 5px; border: 1px solid var(--line); border-radius: 3px; color: var(--fg); }
+
+@media (hover: none) {
+  .btn kbd, .kbd-help { display: none; }
+  .btn { min-height: 44px; padding: 9px 16px; }
+  .modes button { min-height: 38px; }
+  .lines { max-height: 320px; }
+}
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+@media (max-width: 520px) { .wrap { padding: 14px 16px 40px; } .sentence { font-size: 19px; } .stage { padding: 16px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>迴音練習台<small id="dateLabel"></small></h1>
+    <div class="stats">
+      <div><b id="streak">0</b>天連續</div>
+      <div><b id="doneCount">0</b>段已完成</div>
+      <div><b id="libCount">0</b>段素材</div>
+    </div>
+  </header>
+
+  <div id="app" class="grid" hidden>
+    <main class="panel player-box">
+      <div class="clip-meta">
+        <span id="clipCat" class="chip"></span>
+        <span id="clipTitle" class="title"></span>
+        <span id="clipCh" class="ch"></span>
+      </div>
+      <div class="video"><div id="player"></div></div>
+
+      <div class="stage">
+        <div class="stage-head">
+          <div class="modes" role="group" aria-label="練習模式">
+            <button id="modeEcho" aria-pressed="true">迴音</button>
+            <button id="modeDict" aria-pressed="false">聽寫</button>
+          </div>
+          <span class="counter" id="counter">1 / 12</span>
+        </div>
+
+        <div class="phase" id="phase" data-p="idle"><span class="dot"></span><span id="phaseText">按「播放」開始第一句</span></div>
+        <div class="bar"><i id="bar"></i></div>
+
+        <div id="sentence" class="sentence hidden"></div>
+        <div id="extra" class="extra" hidden></div>
+
+        <div id="dict" class="dict" hidden>
+          <input id="dictInput" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="done" placeholder="聽完後把句子打出來，按 Enter 檢查">
+          <span id="score" class="score"></span>
+        </div>
+
+        <div class="controls">
+          <button class="btn primary" id="btnPlay">播放 <kbd>空白</kbd></button>
+          <button class="btn" id="btnPrev">上一句 <kbd>←</kbd></button>
+          <button class="btn" id="btnNext">下一句 <kbd>→</kbd></button>
+          <span class="spacer"></span>
+          <button class="btn" id="btnReveal">顯示字幕 <kbd>S</kbd></button>
+        </div>
+
+        <div id="finish" class="finish" hidden>
+          <p id="finishText">這段練完了。</p>
+          <button class="btn primary" id="btnDone">標記完成，下一段</button>
+        </div>
+      </div>
+
+      <div class="settings">
+        <label>腦中回放 <select id="setEcho"><option value="1">1 秒</option><option value="2" selected>2 秒</option><option value="3">3 秒</option><option value="4">4 秒</option></select></label>
+        <label>每句播放 <select id="setRepeat"><option value="1">1 次</option><option value="2" selected>2 次</option><option value="3">3 次</option></select></label>
+        <label>速度 <select id="setRate"><option value="0.75">0.75×</option><option value="0.9">0.9×</option><option value="1" selected>1×</option></select></label>
+        <label><input type="checkbox" id="setAuto" checked> 自動下一句</label>
+      </div>
+    </main>
+
+    <aside>
+      <section class="panel">
+        <h2 class="section-title">今日片段 <span>每類一段</span></h2>
+        <ul class="today" id="today"></ul>
+        <button class="swap" id="btnSwap">換一段同類別的 →</button>
+      </section>
+      <section class="panel">
+        <h2 class="section-title">句子清單 <span>練過的才顯示</span></h2>
+        <ul class="lines masked" id="lines"></ul>
+      </section>
+      <section class="panel help">
+        <b>迴音模式</b>：播一句 → 停下來在腦中回放 → 換你說（不能出聲就動嘴型默念）。<br>
+        <b>聽寫模式</b>：聽完把句子打出來，按 <kbd>Enter</kbd>（手機按「完成」）檢查，再按一次下一句。<span class="kbd-help"><kbd>Shift</kbd>+<kbd>Enter</kbd> 重播。</span>
+      </section>
+    </aside>
+  </div>
+
+  <div id="empty" class="panel empty" hidden>
+    <h2>還沒有練習素材</h2>
+    <p>請關掉這個頁面，雙擊資料夾裡的 <code>start.bat</code>，它會先抓好今天的片段再開啟練習。</p>
+  </div>
+</div>
+
+<script>
+window.__boot = () => {
+  const CATS = ["財經", "科技", "心理", "政治"];
+  const LIB = (window.ECHO_DATA && window.ECHO_DATA.clips) || [];
+  const $ = id => document.getElementById(id);
+  const todayStr = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; })();
+
+  // ---------- 進度存在瀏覽器 ----------
+  const KEY = "echo-trainer-v1";
+  let store;
+  try { store = JSON.parse(localStorage.getItem(KEY)) || {}; } catch { store = {}; }
+  store.done ??= {}; store.days ??= []; store.settings ??= {}; store.today ??= null;
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(store)); } catch {} };
+
+  $("dateLabel").textContent = todayStr;
+  $("libCount").textContent = LIB.length;
+  if (!LIB.length) { $("empty").hidden = false; return; }
+  $("app").hidden = false;
+
+  function streak() {
+    const set = new Set(store.days); let n = 0; const d = new Date();
+    if (!set.has(todayStr)) d.setDate(d.getDate() - 1);
+    for (;;) {
+      const s = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+      if (!set.has(s)) break; n++; d.setDate(d.getDate() - 1);
+    }
+    return n;
+  }
+  function refreshStats() {
+    $("streak").textContent = streak();
+    $("doneCount").textContent = Object.keys(store.done).length;
+  }
+
+  // ---------- 今日片段：每類挑一段還沒練過的最新片段 ----------
+  const byId = Object.fromEntries(LIB.map(c => [c.id, c]));
+  function candidates(cat) {
+    return LIB.filter(c => c.cat === cat && !store.done[c.id]).sort((a, b) => b.added.localeCompare(a.added));
+  }
+  if (!store.today || store.today.date !== todayStr || store.today.ids.some(id => !byId[id])) {
+    const ids = [];
+    for (const cat of CATS) {
+      const c = candidates(cat)[0] || LIB.filter(x => x.cat === cat).slice(-1)[0];
+      if (c) ids.push(c.id);
+    }
+    store.today = { date: todayStr, ids }; save();
+  }
+
+  // ---------- 狀態 ----------
+  const S = {
+    clip: null, idx: 0, mode: store.settings.mode || "echo",
+    phase: "idle", reveal: false, seen: new Set(), checked: false, scores: [],
+    run: 0, // 每次動作遞增，用來取消舊的計時
+  };
+  const opt = {
+    echo: () => +$("setEcho").value, repeat: () => +$("setRepeat").value,
+    rate: () => +$("setRate").value, auto: () => $("setAuto").checked,
+  };
+  for (const id of ["setEcho", "setRepeat", "setRate"]) {
+    if (store.settings[id]) $(id).value = store.settings[id];
+    $(id).addEventListener("change", () => { store.settings[id] = $(id).value; save(); if (id === "setRate" && ready) player.setPlaybackRate(opt.rate()); });
+  }
+  if (store.settings.setAuto === false) $("setAuto").checked = false;
+  $("setAuto").addEventListener("change", () => { store.settings.setAuto = $("setAuto").checked; save(); });
+
+  // ---------- 畫面 ----------
+  const esc = s => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  function renderToday() {
+    $("today").innerHTML = store.today.ids.map(id => {
+      const c = byId[id]; if (!c) return "";
+      const done = store.done[id];
+      return `<li><button data-id="${esc(id)}" aria-current="${S.clip && S.clip.id === id}">
+        <span class="chip cat-${c.cat}">${c.cat}</span><span class="t">${esc(c.title)}</span>
+        ${done ? '<span class="done">完成</span>' : '<span class="todo">未練</span>'}</button></li>`;
+    }).join("");
+  }
+  function renderLines() {
+    $("lines").innerHTML = S.clip.segs.map((s, i) => `<li class="${S.seen.has(i) ? "seen" : ""}"><button data-i="${i}" aria-current="${i === S.idx}">
+      <span class="n">${String(i + 1).padStart(2, "0")}</span><span class="tx">${esc(s.t)}</span></button></li>`).join("");
+    const box = $("lines"), cur = box.querySelector('[aria-current="true"]');
+    if (cur) { const li = cur.parentElement; box.scrollTop = li.offsetTop - box.clientHeight / 2 + li.offsetHeight / 2; }
+  }
+  function renderSentence() {
+    const seg = S.clip.segs[S.idx];
+    $("counter").textContent = `${S.idx + 1} / ${S.clip.segs.length}`;
+    if (S.mode === "dict" && S.checked) return; // 已顯示比對結果
+    $("sentence").textContent = seg.t;
+    const hide = S.mode === "dict" ? true : !S.reveal;
+    $("sentence").classList.toggle("hidden", hide);
+    $("extra").hidden = true;
+  }
+  function setPhase(p, text) {
+    S.phase = p; $("phase").dataset.p = p; $("phaseText").textContent = text;
+  }
+  let barTimer = null;
+  function runBar(ms) {
+    clearInterval(barTimer); const t0 = performance.now(); const bar = $("bar");
+    bar.style.width = "0";
+    if (!ms) return;
+    barTimer = setInterval(() => {
+      const r = Math.min(1, (performance.now() - t0) / ms); bar.style.width = (r * 100) + "%";
+      if (r >= 1) clearInterval(barTimer);
+    }, 50);
+  }
+  function setMode(m) {
+    S.mode = m; store.settings.mode = m; save();
+    $("modeEcho").setAttribute("aria-pressed", m === "echo");
+    $("modeDict").setAttribute("aria-pressed", m === "dict");
+    $("dict").hidden = m !== "dict";
+    $("btnReveal").hidden = m === "dict";
+    S.checked = false; $("dictInput").value = ""; $("score").textContent = "";
+    stop(); renderSentence();
+    setPhase("idle", m === "echo" ? "按「播放」開始這一句" : "按「播放」聽這一句，再打字");
+  }
+
+  // ---------- YouTube 播放器 ----------
+  let player, ready = false, poll = null;
+  window.onYouTubeIframeAPIReady = () => {
+    player = new YT.Player("player", {
+      videoId: S.clip.vid,
+      playerVars: { rel: 0, playsinline: 1, cc_load_policy: 0, iv_load_policy: 3, disablekb: 1, origin: location.origin },
+      events: {
+        onReady: () => { ready = true; player.cueVideoById({ videoId: S.clip.vid, startSeconds: S.clip.segs[0].s }); },
+        onError: e => setPhase("idle", `這支影片無法嵌入播放（錯誤 ${e.data}），請按「換一段同類別的」。`),
+      },
+    });
+  };
+  const yt = document.createElement("script"); yt.src = "https://www.youtube.com/iframe_api"; document.head.appendChild(yt);
+
+  function stop() {
+    S.run++; clearInterval(poll); clearInterval(barTimer); $("bar").style.width = "0";
+    if (ready) try { player.pauseVideo(); } catch {}
+  }
+  const wait = (ms, run) => new Promise(res => setTimeout(() => res(run === S.run), ms));
+
+  // 播一次指定句子，播完回傳 true（被打斷回傳 false）
+  function playSeg(i, run) {
+    return new Promise(res => {
+      if (!ready) { setPhase("idle", "播放器載入中，請稍候再按一次…"); return res(false); }
+      const seg = S.clip.segs[i];
+      player.setPlaybackRate(opt.rate());
+      player.seekTo(seg.s, true); player.playVideo();
+      const durMs = (seg.e - seg.s) * 1000 / opt.rate();
+      runBar(durMs);
+      const t0 = performance.now();
+      let started = false;
+      clearInterval(poll);
+      poll = setInterval(() => {
+        if (run !== S.run) { clearInterval(poll); return res(false); }
+        let t = 0; try { t = player.getCurrentTime(); } catch {}
+        const st = player.getPlayerState();
+        const playing = st === YT.PlayerState.PLAYING;
+        if (playing || st === YT.PlayerState.BUFFERING) started = true;
+        if (!started && performance.now() - t0 > 2500) {
+          clearInterval(poll); S.run++; runBar(0);
+          setPhase("idle", "手機第一次要先點一下影片畫面開始播放，之後就能用按鈕控制。");
+          return res(false);
+        }
+        if ((playing && t >= seg.e) || performance.now() - t0 > durMs + 8000) {
+          clearInterval(poll); player.pauseVideo(); res(true);
+        }
+      }, 40);
+    });
+  }
+
+  async function echoCycle() {
+    stop(); const run = S.run; const seg = S.clip.segs[S.idx];
+    const reps = opt.repeat();
+    for (let r = 1; r <= reps; r++) {
+      setPhase("play", reps > 1 ? `仔細聽（第 ${r} / ${reps} 次）` : "仔細聽");
+      if (!await playSeg(S.idx, run)) return;
+      const echoMs = opt.echo() * 1000;
+      setPhase("echo", "在腦中回放剛剛的聲音…"); runBar(echoMs);
+      if (!await wait(echoMs, run)) return;
+      const speakMs = Math.max(1800, (seg.e - seg.s) * 1000 * 1.3 / opt.rate());
+      setPhase("speak", "換你說（不能出聲就動嘴型默念）"); runBar(speakMs);
+      if (!await wait(speakMs, run)) return;
+    }
+    markSeen(S.idx);
+    if (opt.auto() && S.idx < S.clip.segs.length - 1) { go(S.idx + 1, true); }
+    else { setPhase("idle", S.idx < S.clip.segs.length - 1 ? "按「下一句」繼續，或「播放」再練一次" : "最後一句了"); runBar(0); maybeFinish(); }
+  }
+
+  async function dictPlay() {
+    stop(); const run = S.run;
+    setPhase("play", "仔細聽");
+    if (!await playSeg(S.idx, run)) return;
+    runBar(0);
+    setPhase("echo", "把聽到的打出來，Enter 檢查；Shift+Enter 重播");
+    $("dictInput").focus();
+  }
+  const play = () => S.mode === "echo" ? echoCycle() : dictPlay();
+
+  // ---------- 聽寫比對 ----------
+  const tok = w => w.toLowerCase().replace(/[’‘]/g, "'").replace(/[^a-z0-9'%$]/g, "");
+  const words = s => s.split(/\s+/).map(tok).filter(Boolean);
+  function diff(a, b) { // a = 原句, b = 使用者輸入；回傳原句每個字是否答對 + 多打的字
+    const n = a.length, m = b.length, L = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+    for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--)
+      L[i][j] = a[i] === b[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+    const ok = new Array(n).fill(false), extra = []; let i = 0, j = 0;
+    while (i < n && j < m) {
+      if (a[i] === b[j]) { ok[i] = true; i++; j++; }
+      else if (L[i + 1][j] >= L[i][j + 1]) i++;
+      else extra.push(b[j++]);
+    }
+    while (j < m) extra.push(b[j++]);
+    return { ok, extra };
+  }
+  function check() {
+    const seg = S.clip.segs[S.idx];
+    const rawWords = seg.t.split(/\s+/).filter(Boolean);
+    const shown = rawWords.filter(w => tok(w));
+    const target = shown.map(tok);
+    const { ok, extra } = diff(target, words($("dictInput").value));
+    const pct = target.length ? Math.round(ok.filter(Boolean).length / target.length * 100) : 0;
+    $("sentence").innerHTML = shown.map((w, k) => `<span class="${ok[k] ? "w-ok" : "w-miss"}">${esc(w)}</span>`).join(" ");
+    $("sentence").classList.remove("hidden");
+    $("extra").hidden = !extra.length;
+    $("extra").innerHTML = extra.length ? "多打或拼錯：" + extra.map(w => `<s>${esc(w)}</s>`).join(" ") : "";
+    $("score").textContent = `正確率 ${pct}%`;
+    S.scores[S.idx] = pct; S.checked = true; markSeen(S.idx);
+    setPhase("idle", pct === 100 ? "全對！按 Enter 下一句" : "紅色是漏聽的字，Shift+Enter 再聽一次，Enter 下一句");
+    maybeFinish();
+  }
+
+  // ---------- 流程控制 ----------
+  function markSeen(i) { S.seen.add(i); renderLines(); }
+  function go(i, autoplay) {
+    if (i < 0 || i >= S.clip.segs.length) return;
+    stop(); S.idx = i; S.checked = false; S.reveal = false;
+    $("dictInput").value = ""; $("score").textContent = "";
+    $("btnReveal").firstChild.textContent = "顯示字幕 ";
+    renderSentence(); renderLines();
+    if (autoplay) play(); else setPhase("idle", "按「播放」開始這一句");
+  }
+  function maybeFinish() {
+    if (S.seen.size < S.clip.segs.length) return;
+    const sc = S.scores.filter(x => x != null);
+    $("finishText").textContent = sc.length ? `這段練完了，聽寫平均正確率 ${Math.round(sc.reduce((a, b) => a + b, 0) / sc.length)}%。`
+      : "這段練完了。建議關掉字幕再從頭聽一次，看能聽懂多少。";
+    $("finish").hidden = false;
+  }
+  function loadClip(id) {
+    stop();
+    S.clip = byId[id]; S.idx = 0; S.seen = new Set(); S.scores = []; S.checked = false; S.reveal = false;
+    $("finish").hidden = true;
+    $("clipCat").textContent = S.clip.cat; $("clipCat").className = `chip cat-${S.clip.cat}`;
+    $("clipTitle").textContent = S.clip.title; $("clipTitle").title = S.clip.title;
+    $("clipCh").textContent = S.clip.channel;
+    if (ready) player.cueVideoById({ videoId: S.clip.vid, startSeconds: S.clip.segs[0].s });
+    renderToday(); renderSentence(); renderLines();
+    setPhase("idle", S.mode === "echo" ? "按「播放」開始第一句" : "按「播放」聽第一句，再打字");
+  }
+
+  $("btnPlay").onclick = play;
+  $("btnPrev").onclick = () => go(S.idx - 1, false);
+  $("btnNext").onclick = () => go(S.idx + 1, true);
+  $("btnReveal").onclick = toggleReveal;
+  function toggleReveal() {
+    if (S.mode === "dict") return;
+    S.reveal = !S.reveal; markSeen(S.idx);
+    $("btnReveal").firstChild.textContent = S.reveal ? "隱藏字幕 " : "顯示字幕 ";
+    renderSentence();
+  }
+  $("modeEcho").onclick = () => setMode("echo");
+  $("modeDict").onclick = () => setMode("dict");
+  $("today").onclick = e => { const b = e.target.closest("button[data-id]"); if (b) loadClip(b.dataset.id); };
+  $("lines").onclick = e => { const b = e.target.closest("button[data-i]"); if (b) go(+b.dataset.i, true); };
+  $("btnSwap").onclick = () => {
+    const cat = S.clip.cat;
+    const list = candidates(cat).filter(c => !store.today.ids.includes(c.id));
+    if (!list.length) { setPhase("idle", `「${cat}」沒有其他未練的片段了，明天會有新的。`); return; }
+    const next = list[0];
+    store.today.ids = store.today.ids.map(id => byId[id].cat === cat ? next.id : id); save();
+    loadClip(next.id);
+  };
+  $("btnDone").onclick = () => {
+    store.done[S.clip.id] = todayStr;
+    if (!store.days.includes(todayStr)) store.days.push(todayStr);
+    save(); refreshStats();
+    const nextId = store.today.ids.find(id => !store.done[id]);
+    if (nextId) loadClip(nextId);
+    else { renderToday(); $("finish").hidden = true; setPhase("idle", "今天四段都練完了！可以按「換一段同類別的」多練，或明天再來。"); }
+  };
+
+  $("dictInput").addEventListener("keydown", e => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    if (e.shiftKey) { dictPlay(); return; }
+    if (S.checked) go(S.idx + 1, true); else check();
+  });
+  document.addEventListener("keydown", e => {
+    if (e.target.matches("input, select, textarea") || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.code === "Space") { e.preventDefault(); play(); }
+    else if (e.key === "ArrowRight") go(S.idx + 1, true);
+    else if (e.key === "ArrowLeft") go(S.idx - 1, false);
+    else if (e.key.toLowerCase() === "s") toggleReveal();
+  });
+
+  // ---------- 開始 ----------
+  refreshStats();
+  const first = store.today.ids.find(id => !store.done[id]) || store.today.ids[0];
+  loadClip(first);
+  setMode(S.mode);
+};
+(() => {
+  const s = document.createElement("script");
+  s.src = "data.js?t=" + Date.now();
+  s.onload = s.onerror = () => window.__boot();
+  document.head.appendChild(s);
+})();
+</script>
+</body>
+</html>
