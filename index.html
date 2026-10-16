@@ -121,6 +121,7 @@ aside { display: grid; gap: 16px; }
 .today li button:hover { background: var(--accent-soft); }
 .today li button[aria-current="true"] { background: var(--accent-soft); }
 .today .t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px; }
+.today .pace { font-style: normal; font-size: 11.5px; color: var(--muted); margin-left: 6px; }
 .today .done { font-size: 12px; color: var(--good); font-weight: 700; }
 .today .todo { font-size: 12px; color: var(--muted); }
 .swap { border: 0; background: transparent; color: var(--accent); font-size: 13px; padding: 0 16px 12px; text-align: left; }
@@ -207,9 +208,9 @@ aside { display: grid; gap: 16px; }
       </div>
 
       <div class="settings">
-        <label>腦中回放 <select id="setEcho"><option value="1">1 秒</option><option value="2" selected>2 秒</option><option value="3">3 秒</option><option value="4">4 秒</option></select></label>
+        <label>腦中回放 <select id="setEcho"><option value="1">1 秒</option><option value="2">2 秒</option><option value="3" selected>3 秒</option><option value="4">4 秒</option><option value="5">5 秒</option></select></label>
         <label>每句播放 <select id="setRepeat"><option value="1">1 次</option><option value="2" selected>2 次</option><option value="3">3 次</option></select></label>
-        <label>速度 <select id="setRate"><option value="0.75">0.75×</option><option value="0.9">0.9×</option><option value="1" selected>1×</option></select></label>
+        <label>速度 <select id="setRate"><option value="0.5">0.5×</option><option value="0.6">0.6×</option><option value="0.75" selected>0.75×</option><option value="0.85">0.85×</option><option value="1">1×</option></select></label>
         <label><input type="checkbox" id="setAuto" checked> 自動下一句</label>
       </div>
     </main>
@@ -272,16 +273,23 @@ window.__boot = () => {
 
   // ---------- 今日片段：每類挑一段還沒練過的最新片段 ----------
   const byId = Object.fromEntries(LIB.map(c => [c.id, c]));
-  function candidates(cat) {
-    return LIB.filter(c => c.cat === cat && !store.done[c.id]).sort((a, b) => b.added.localeCompare(a.added));
+  const wpm = c => {
+    if (c._wpm) return c._wpm;
+    const w = c.segs.reduce((n, x) => n + x.t.split(/\s+/).length, 0);
+    const t = c.segs.reduce((n, x) => n + Math.max(0.3, x.e - x.s), 0);
+    return (c._wpm = t ? Math.round(w / t * 60) : 999);
+  };
+  const pace = c => { const v = wpm(c); return v < 140 ? "慢" : v < 170 ? "中" : "快"; };
+  function candidates(cat) { // 未練過的片段，語速慢的優先
+    return LIB.filter(c => c.cat === cat && !store.done[c.id]).sort((a, b) => wpm(a) - wpm(b));
   }
-  if (!store.today || store.today.date !== todayStr || store.today.ids.some(id => !byId[id])) {
+  if (!store.today || store.today.v !== 2 || store.today.date !== todayStr || store.today.ids.some(id => !byId[id])) {
     const ids = [];
     for (const cat of CATS) {
       const c = candidates(cat)[0] || LIB.filter(x => x.cat === cat).slice(-1)[0];
       if (c) ids.push(c.id);
     }
-    store.today = { date: todayStr, ids }; save();
+    store.today = { v: 2, date: todayStr, ids }; save();
   }
 
   // ---------- 狀態 ----------
@@ -309,7 +317,7 @@ window.__boot = () => {
       const c = byId[id]; if (!c) return "";
       const done = store.done[id];
       return `<li><button data-id="${esc(id)}" aria-current="${S.clip && S.clip.id === id}">
-        <span class="chip cat-${c.cat}">${c.cat}</span><span class="t">${esc(c.title)}</span>
+        <span class="chip cat-${c.cat}">${c.cat}</span><span class="t">${esc(c.title)}<em class="pace">語速${pace(c)}</em></span>
         ${done ? '<span class="done">完成</span>' : '<span class="todo">未練</span>'}</button></li>`;
     }).join("");
   }
@@ -486,7 +494,7 @@ window.__boot = () => {
     $("finish").hidden = true;
     $("clipCat").textContent = S.clip.cat; $("clipCat").className = `chip cat-${S.clip.cat}`;
     $("clipTitle").textContent = S.clip.title; $("clipTitle").title = S.clip.title;
-    $("clipCh").textContent = S.clip.channel;
+    $("clipCh").textContent = `${S.clip.channel} · 每分鐘 ${wpm(S.clip)} 字`;
     if (ready) player.cueVideoById({ videoId: S.clip.vid, startSeconds: S.clip.segs[0].s });
     renderToday(); renderSentence(); renderLines();
     setPhase("idle", S.mode === "echo" ? "按「播放」開始第一句" : "按「播放」聽第一句，再打字");
